@@ -44,25 +44,21 @@ import java.util.UUID;
  */
 public class BluetoothLeService extends Service implements LeScanCallback{
     private final static String TAG = BluetoothLeService.class.getSimpleName();
-    private static final String DEVICE_NAME = "Biscuit";
+
+	private static final String DEVICE_NAME = "Biscuit";
+    private String device_address = "20:CD:39:9E:F1:40";
+
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
     private String mBluetoothDeviceAddress;
     private BluetoothGatt mBluetoothGatt;
     private int mConnectionState = STATE_DISCONNECTED;
-    private String device_address = "20:CD:39:9E:F1:40";
-    private BluetoothDevice device = null;
-    private BluetoothGattCharacteristic characteristicTx = null;
-    private Handler handler = new Handler();
 
-
-    public static String FOUND_DEVICE  = "found";
-    
-    
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
     private static final int STATE_CONNECTED = 2;
 
+    public static String FOUND_DEVICE  = "found";
     public final static String ACTION_GATT_CONNECTED =
             "com.example.bluetooth.le.ACTION_GATT_CONNECTED";
     public final static String ACTION_GATT_DISCONNECTED =
@@ -82,7 +78,10 @@ public class BluetoothLeService extends Service implements LeScanCallback{
     public final static UUID UUID_BLE_SHIELD_SERVICE = UUID
             .fromString(GattAttributes.BLE_SHIELD_SERVICE);
 
-    // Implements callback methods for GATT events that the app cares about.  For example,
+    
+    private Handler handler = new Handler();
+    
+ // Implements callback methods for GATT events that the app cares about.  For example,
     // connection change and services discovered.
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
         @Override
@@ -91,21 +90,17 @@ public class BluetoothLeService extends Service implements LeScanCallback{
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 intentAction = ACTION_GATT_CONNECTED;
                 mConnectionState = STATE_CONNECTED;
-                if(deviceConnected()){
-                	broadcastUpdate(intentAction);
-                
-                	Log.i(TAG, "Connected to GATT server.");
+                broadcastUpdate(intentAction);
+                Log.i(TAG, "Connected to GATT server.");
                 // Attempts to discover services after successful connection.
-                	Log.i(TAG, "Attempting to start service discovery:" +
-                     mBluetoothGatt.discoverServices());
-                }
+                Log.i(TAG, "Attempting to start service discovery:" +
+                        mBluetoothGatt.discoverServices());
 
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 intentAction = ACTION_GATT_DISCONNECTED;
                 mConnectionState = STATE_DISCONNECTED;
                 Log.i(TAG, "Disconnected from GATT server.");
                 broadcastUpdate(intentAction);
-                device = null;
             }
         }
 
@@ -142,53 +137,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
         }
     };
 
-    
-    public void pause(){
-        if(mBluetoothAdapter!=null){
-		mBluetoothAdapter.stopLeScan(this);
-        }
-		
-	}
-    
-    public void scanForDeviceTry(){
-    	startScan();
-        handler.postDelayed(mStopRunnable, 2500);
-    }
-
-    private Runnable mStopRunnable = new Runnable() {
-        @Override
-        public void run() {
-            stopScan();
-        }
-    };
-    
-    @Override
-    public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
-        Log.i(TAG, "New LE Device: " + device.getName() + " @ " + rssi);
-
-        /*
-         * We are looking for SensorTag devices only, so validate the name
-         * that each device reports before adding it to our collection
-         */
-        if (DEVICE_NAME.equals(device.getName())&&device_address.equals(device.getAddress())){
-            this.device = device;
-            broadcastUpdate(FOUND_DEVICE);
-            stopScan();
-            
-        }
-    }
-    
-    private void startScan() {
-        mBluetoothAdapter.startLeScan(this);
-        
-
-    }
-
-    public void stopScan() {
-        mBluetoothAdapter.stopLeScan(this);
-    }
-
-    
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
         sendBroadcast(intent);
@@ -231,7 +179,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
         // such that resources are cleaned up properly.  In this particular example, close() is
         // invoked when the UI is disconnected from the Service.
         close();
-    	
         return super.onUnbind(intent);
     }
 
@@ -242,31 +189,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
      *
      * @return Return true if the initialization is successful.
      */
-    
-    
- 
-    	
-    	
-  
-    
-    @Override
-    public void onStart(Intent intent, int startId) {
-       initialize();
-    }
-
-    
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId){
-    	initialize();
-    	return START_STICKY;
-    	
-    }
-    
-    public boolean initialized(){
-    	  if (mBluetoothManager == null || mBluetoothAdapter == null) return false;
-    	  else return true;
-    }
-    
     public boolean initialize() {
         // For API level 18 and above, get a reference to BluetoothAdapter through
         // BluetoothManager.
@@ -277,7 +199,7 @@ public class BluetoothLeService extends Service implements LeScanCallback{
                 return false;
             }
         }
-        
+
         mBluetoothAdapter = mBluetoothManager.getAdapter();
         if (mBluetoothAdapter == null) {
             Log.e(TAG, "Unable to obtain a BluetoothAdapter.");
@@ -297,14 +219,8 @@ public class BluetoothLeService extends Service implements LeScanCallback{
      *         {@code BluetoothGattCallback#onConnectionStateChange(android.bluetooth.BluetoothGatt, int, int)}
      *         callback.
      */
-    public boolean deviceConnected() {
-    	return device!=null;
-    }
-    
-    
     public boolean connect(final String address) {
-        if(deviceStillConnected())return true;
-    	if (mBluetoothAdapter == null || address == null) {
+        if (mBluetoothAdapter == null || address == null) {
             Log.w(TAG, "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
@@ -321,7 +237,7 @@ public class BluetoothLeService extends Service implements LeScanCallback{
             }
         }
 
-        device = mBluetoothAdapter.getRemoteDevice(address);
+        final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         if (device == null) {
             Log.w(TAG, "Device not found.  Unable to connect.");
             return false;
@@ -335,18 +251,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
         return true;
     }
 
- 
-    @Override
-	public void onDestroy() {
-        super.onDestroy();
-        close();
-        
-        Log.d(TAG, "Service is terminated");
-
-        
-        
-    }
-    
     /**
      * Disconnects an existing connection or cancel a pending connection. The disconnection result
      * is reported asynchronously through the
@@ -359,7 +263,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
             return;
         }
         mBluetoothGatt.disconnect();
-        device = null;
     }
 
     /**
@@ -373,8 +276,6 @@ public class BluetoothLeService extends Service implements LeScanCallback{
         pause();
         mBluetoothGatt.close();
         mBluetoothGatt = null;
-        device = null;
-        characteristicTx = null;
     }
 
     /**
@@ -447,33 +348,65 @@ public class BluetoothLeService extends Service implements LeScanCallback{
     }
 
     public BluetoothGattService getBLEService() {
-        if (mBluetoothGatt == null)
+        if (mBluetoothGatt == null){
+        	Log.w(TAG,"GATT BROKEN");
             return null;
-
+        }
         return mBluetoothGatt.getService(UUID_BLE_SHIELD_SERVICE);
     }
-    
-    public void setDeivceAddress(String address){
-    	device_address = address;
-    }
-    
-    public String getDeviceAddress(){
-    	return device_address;
-    }
 
-	public boolean deviceStillConnected() {
-		return(mBluetoothGatt!=null && device!=null && mBluetoothAdapter !=null);
-	
-	}
-
-	public void setTx(BluetoothGattCharacteristic tx) {
-		characteristicTx = tx;
+  
+    
+    
+    public void pause(){
+        if(mBluetoothAdapter!=null){
+		mBluetoothAdapter.stopLeScan(this);
+        }
 		
 	}
-	
-	public BluetoothGattCharacteristic getTx(){
-		return characteristicTx;
-	}
-	
-	
+    
+    public void scanForDeviceTry(){
+    	startScan();
+        handler.postDelayed(mStopRunnable, 2500);
+    }
+
+    private Runnable mStopRunnable = new Runnable() {
+        @Override
+        public void run() {
+            stopScan();
+        }
+    };
+    
+    @Override
+    public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
+        Log.i(TAG, "New LE Device: " + device.getName() + " @ " + rssi);
+
+        /*
+         * We are looking for SensorTag devices only, so validate the name
+         * that each device reports before adding it to our collection
+         */
+        if (DEVICE_NAME.equals(device.getName())&&device_address.equals(device.getAddress())){
+            broadcastUpdate(FOUND_DEVICE);
+            stopScan();
+            
+        }
+    }
+    
+    private void startScan() {
+        mBluetoothAdapter.startLeScan(this);
+        
+
+    }
+
+    public void stopScan() {
+        mBluetoothAdapter.stopLeScan(this);
+    }
+
 }
+    
+    
+
+
+ 
+
+

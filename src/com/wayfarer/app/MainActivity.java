@@ -94,7 +94,8 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private final static String TAG = MainActivity.class.getSimpleName();
 	public static final String LOG_TAG = "Wayfarer: MainActivity";
 
-
+//-------------------------STICKY GLOBAL HANDLER ---------------------------------//
+	private ApplicationController AC = null;
 
 //-----------------------LOCATION GLOBALS-----------------------------------------//
 	private int currentIndex;
@@ -132,6 +133,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private static boolean canStartNav = false;
 	private static boolean canStartSendingData = false;
 	private static boolean deviceFound = false;
+	private static boolean mConnected = false;
 
 	// Requestion code for user interaction activities.
 	private static final int FETCH_START_AND_DESTINATION_REQUEST    = 2;
@@ -175,10 +177,15 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			@Override
 			public void run() {
 				if(action.equals(CONNECTED)){
-					btButton.setEnabled(false);
-					btButton.setClickable(false);
+					mConnected = true;
+					btButton.setEnabled(true);
+					btButton.setClickable(true);
 					deviceFound = true;
-					btButton.setText("Found");		
+					btButton.setText("Found");
+					startNavButton.setEnabled(false);
+					startNavButton.setEnabled(false);
+					exitButton.setEnabled(false);
+					exitButton.setEnabled(false);
 				}else if(action.equals(SERVICE_DISCONNECTED)){
 					mBluetoothLeService = null;
 					btButton.setText("Connect");
@@ -189,8 +196,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 					exitButton.setEnabled(false);
 					exitButton.setEnabled(false);
 					deviceFound = false;
-					canStartSendingData = false;		
+					canStartSendingData = false;
 				}else if(action.equals(DISCONNECTED)){
+					mConnected = false;
 					btButton.setClickable(true);
 					btButton.setEnabled(true);
 					btButton.setText("Connect");
@@ -221,33 +229,36 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 					listenToNavigationUpdates = true;
 				}else if(action.equals(FOUND)){
 					btButton.setText("Found");
-					btButton.setEnabled(false);
-					btButton.setClickable(false);
+					btButton.setEnabled(true);
+					btButton.setClickable(true);
+					canStartSendingData= false;
 					deviceFound = true;
 				}else if(action.equals(NOT_FOUND)){
 					btButton.setEnabled(true);
 					btButton.setClickable(true);
 					btButton.setText("Connect");
+					deviceFound = false;
+					canStartSendingData = false;
 				}else if(action.equals(SCANNING)){
 					canStartSendingData = false;
+					deviceFound = false;
 					btButton.setText("Scanning...");
 					btButton.setEnabled(false);
 					btButton.setClickable(false);
 				}else if(action.equals(PAUSE_NAV_MODE)){
-					btButton.setText("Connected");
+					btButton.setText("Paused");
 					startNavButton.setEnabled(true);
 					startNavButton.setClickable(true);
 					exitButton.setEnabled(false);
 					exitButton.setClickable(false);
 					listenToNavigationUpdates = false;	
 				}else if(action.equals(STOP_NAV_MODE)){
-					btButton.setText("Connected");
+					btButton.setText("Stopped");
 					startNavButton.setEnabled(true);
 					startNavButton.setClickable(true);
 					exitButton.setEnabled(false);
 					exitButton.setClickable(false);
 					listenToNavigationUpdates = false;	
-					canStartNav = false;	
 				}else if(action.equals(NAV_MODE_ENABLED)){
 					canStartNav = true;
 					startNavButton.setEnabled(true);
@@ -321,19 +332,20 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 				 * 	
 				 */
 
-				if(deviceFound && canStartSendingData){
+				if(deviceFound &&mConnected&& canStartSendingData &&characteristicTx!=null){
 					updateConnectionState(DISCOVERED);
 					return;
-				}else if(deviceFound){
+				}
+
+				if(deviceFound && !mConnected){
 					if(mBluetoothLeService.connect(mDeviceAddress)){
 						updateConnectionState(CONNECTED);
 						return;
 					}
 				}
-				else{
-					updateConnectionState(DISCONNECTED);
-					return;
-				}
+				
+			
+				
 
 			}
 		});
@@ -347,12 +359,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 			@Override
 			public void onClick(View view){
-				if(canStartSendingData && deviceFound && navigationOkay()){
+				if(canStartSendingData && characteristicTx!=null &&deviceFound && navigationOkay()&&mConnected){
 					startNavigation();
 					updateConnectionState(NAV_MODE);
 				}else if(!navigationOkay()||!canStartNav){
 					tellUserToSearch();
-				}else if(!deviceFound||!canStartSendingData)
+				}else if(!deviceFound||!canStartSendingData||characteristicTx==null)
 					tellUserToUpdateConnectionState();
 
 			}
@@ -376,8 +388,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 
 	private void tellUserToUpdateConnectionState(){
-		updateConnectionState(DISCONNECTED);
-		Toast.makeText(this, "Connect device", Toast.LENGTH_SHORT).show();
+		//updateConnectionState(DISCONNECTED);
+		Log.d(LOG_TAG, "Device found = " + deviceFound);
+		Log.d(LOG_TAG,"Can Start Sending data = "+ canStartSendingData);
+		Log.d(LOG_TAG, "TX is null = " + (characteristicTx==null));
+		Toast.makeText(this, "Device trying to connect....", Toast.LENGTH_SHORT).show();
+		
 	}
 	private void tellUserToSearch(){
 		Toast.makeText(this, "Choose a route by pressing \"Search\"", Toast.LENGTH_SHORT).show();
@@ -386,7 +402,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 //---------------------------------ACTIVITY LIFECYCLE--------------------------------------------------//
 
-	/** Called when the activity is first created. */
 	@Override
 	public void onCreate(Bundle savedInstanceState)
 	{
@@ -401,23 +416,22 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		Log.d(LOG_TAG, "Map render finishes.");
 
 		Log.d(LOG_TAG, "MainActivity initialized.");
-
+		AC = (ApplicationController)getApplicationContext();
 		mLocationRequest = LocationRequest.create();
 		mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 		mLocationRequest.setInterval(locationUpdateInterval);
 
 	}
 	
-
 	@Override
 	protected void onResume()
 	{
-
 		super.onResume();
+		registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
 		if (mBluetoothLeService != null) {
 			final boolean result = mBluetoothLeService.connect(mDeviceAddress);
 			Log.d(TAG, "Connect request result=" + result);
-
+			if(result)updateConnectionState(CONNECTED);
 		}
 		setUpMapIfNeeded();
 	}
@@ -430,8 +444,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	protected void onStart()
 	{
 		super.onStart();
-		registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
 		locationClient.connect();
+		
+
 	}
 
 
@@ -439,11 +454,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	protected void onPause() {
 		super.onPause();
 		unregisterReceiver(mGattUpdateReceiver);
-
-
-		//canStartSendingData = false;
-
-
 	}
 
 	@Override
@@ -451,8 +461,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		super.onDestroy();
 		unbindService(mServiceConnection);
 		mBluetoothLeService = null;
-		updateConnectionState(DISCONNECTED);
-
 	}
 
 	/*
@@ -461,13 +469,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	@Override
 	protected void onStop() {
 		// Disconnecting the client invalidates it.
-		stopNavigation();
-
+		locationClient.removeLocationUpdates(this);
 		locationClient.disconnect();
 
 		super.onStop();
 	}
-	
+
 	protected void onActivityResult(int requestCode, int resultCode, Intent data)
 	{
 		switch (requestCode)
@@ -587,21 +594,31 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	
 
 	private void pauseNavigation(){
-		updateConnectionState(STOP_NAV_MODE);
+		updateConnectionState(PAUSE_NAV_MODE);
 	}
 	
 	private void stopNavigation(){
-		locationClient.removeLocationUpdates(this);
-		currentRoute = null;
+		updateConnectionState(STOP_NAV_MODE);
+		//currentRoute = null;
 	}
 
 	private boolean navigationOkay() {
+		if(currentRoute==null)currentRoute =AC.getCurrentRoute();
 		return(currentRoute!=null&&canStartNav);	
+		
 	}
 
 
 	private void writeUpdate(String action, String command){
+		Log.d(LOG_TAG, "Attempting to write.");
+		Log.d(LOG_TAG, "Device found: " +deviceFound);
+		Log.d(LOG_TAG, "Can startsending: " +canStartSendingData);
+
+		
+
 		if(canStartSendingData && characteristicTx!=null&&deviceFound){
+			Log.d(LOG_TAG, "Writing:" + command);
+
 			final byte[] bytes = command.getBytes();
 			characteristicTx.setValue(bytes);
 			mBluetoothLeService.writeCharacteristic(characteristicTx);
@@ -747,13 +764,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 				finish();
 			}
 			mBluetoothLeService.connect(mDeviceAddress);
-
+			
 		}
 
 		@Override
 		public void onServiceDisconnected(ComponentName componentName) {
-			updateConnectionState(SERVICE_DISCONNECTED);
-			stopNavigation();
+			mBluetoothLeService = null;
 		}
 	};
 
@@ -767,12 +783,11 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 			}
 			if (BluetoothLeService.ACTION_GATT_CONNECTED.equals(action)) {
-				if(mBluetoothLeService.deviceConnected()){
 					updateConnectionState(CONNECTED);
-				}
+				
 			} else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
+				
 				updateConnectionState(DISCONNECTED);
-				stopNavigation();
 
 			} else if (BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
 				updateConnectionState(DISCOVERED);
@@ -780,7 +795,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 				
 			} else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
 				updateConnectionState(DISCONNECTED);
-				stopNavigation();
 				
 				return;
 			}
@@ -789,12 +803,20 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	
 
 	private void getGattService(BluetoothGattService gattService) {
-		if (gattService == null)
+		if (gattService == null){
+			Toast.makeText(this, "gattService null", Toast.LENGTH_SHORT).show();
 			return;
+		}
+			
 		characteristicTx = gattService.getCharacteristic(BluetoothLeService.UUID_BLE_SHIELD_TX);
+		if(characteristicTx ==null){
+			Toast.makeText(this, "TX is null", Toast.LENGTH_SHORT).show();
+			Log.d(LOG_TAG,"Characterisitc is null");
+		}
 		BluetoothGattCharacteristic characteristicRx = gattService.getCharacteristic(BluetoothLeService.UUID_BLE_SHIELD_RX);
 		mBluetoothLeService.setCharacteristicNotification(characteristicRx,true);
 		mBluetoothLeService.readCharacteristic(characteristicRx);
+	
 	}
 
 
@@ -994,6 +1016,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			map.moveCamera(CameraUpdateFactory.newLatLngBounds(currentRoute.getBounds(), 0));
 			updateConnectionState(NAV_MODE_ENABLED);
 			//TRIGGER ABILITY TO TOGGLE START NAV BUTTON IF BLUETOOTH GOOD
+			AC.setRoute(currentRoute);
 
 		}
 

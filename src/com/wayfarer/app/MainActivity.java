@@ -94,6 +94,13 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private final static String TAG = MainActivity.class.getSimpleName();
 	public static final String LOG_TAG = "Wayfarer: MainActivity";
 
+//---------------------------TIMER------------------------------------//	
+    private static long listenTimeInterval = 10000;
+    private static long currentTime;
+    private static long startTime;
+    private static boolean enoughTimeHasPassed=false;
+	
+	
 //-------------------------STICKY GLOBAL HANDLER ---------------------------------//
 	private ApplicationController AC = null;
 
@@ -103,11 +110,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private Location currentDestination;
 	private Location finalDestination;
 	private LocationRequest mLocationRequest;
-	private static final long locationUpdateInterval = 5000;
+	private static final long locationUpdateInterval = 12000;
 	public static String currentAddr = null;
 	String startAddr = null;
 	String destAddr  = null;
 	Route currentRoute = null;
+	private static final int TWO_MINUTES = 1000 * 60 * 2;
 
 
 	
@@ -584,21 +592,23 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 //---------------------------------------------NAVIGATION--------------------------------------------------------//
 	private void startNavigation(){
-		updateConnectionState(NAV_MODE);
 		if(currentRoute==null){
 			updateConnectionState(STOP_NAV_MODE);
 			Toast.makeText(this, "Failed to start navigation", Toast.LENGTH_SHORT).show();
 			return;
 		}
+		startTime = System.currentTimeMillis();
 		finalDestination = makeLocation(currentRoute.getEndLocation());
 		waypoints = currentRoute.getPoints();
 		currentIndex = 1;
-		Location location = locationClient.getLastLocation();
+		//Location location = locationClient.getLastLocation();
 		writeUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
-		currentDestination = makeLocation(waypoints.get(currentIndex));
+		//currentDestination = makeLocation(waypoints.get(currentIndex));
+		updateConnectionState(NAV_MODE);
+
 
 		//currentIndex = findNearestDestinationInWaypointArray(location);
-		onLocationChanged(location);
+		//onLocationChanged(location);
 
 
 	}
@@ -640,7 +650,18 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	}
 	@Override
 	public void onLocationChanged(Location location) {
-		if(listenToNavigationUpdates)makeUseOfLocation(location);
+		if(listenToNavigationUpdates){
+	        currentTime = System.currentTimeMillis();
+	        if((currentTime-startTime) >=  listenTimeInterval){
+	        	startTime = currentTime;
+	        	enoughTimeHasPassed = true;
+
+	        }
+	        if(enoughTimeHasPassed){
+	        	makeUseOfLocation(location);
+				enoughTimeHasPassed=false;
+			}
+		}
 	}
 
 
@@ -664,38 +685,103 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 	}
 
+	private boolean checkRangeOf(float heading){
+		return heading>=(-180)&& heading<=180;
+		
+	}
+	    protected boolean isBetterLocation(Location location, Location currentBestLocation) {
+        if (currentBestLocation == null) {
+            // A new location is always better than no location
+            return true;
+        }
+
+        // Check whether the new location fix is newer or older
+        long timeDelta = location.getTime() - currentBestLocation.getTime();
+        boolean isSignificantlyNewer = timeDelta > TWO_MINUTES;
+        boolean isSignificantlyOlder = timeDelta < -TWO_MINUTES;
+        boolean isNewer = timeDelta > 0;
+
+        // If it's been more than two minutes since the current location, use the new location
+        // because the user has likely moved
+        if (isSignificantlyNewer) {
+            return true;
+            // If the new location is more than two minutes older, it must be worse
+        } else if (isSignificantlyOlder) {
+            return false;
+        }
+
+        // Check whether the new location fix is more or less accurate
+        int accuracyDelta = (int) (location.getAccuracy() - currentBestLocation.getAccuracy());
+        boolean isLessAccurate = accuracyDelta > 0;
+        boolean isMoreAccurate = accuracyDelta < 0;
+        boolean isSignificantlyLessAccurate = accuracyDelta > 200;
+
+        // Check if the old and new location are from the same provider
+        boolean isFromSameProvider = isSameProvider(location.getProvider(),
+                currentBestLocation.getProvider());
+
+        // Determine location quality using a combination of timeliness and accuracy
+        if (isMoreAccurate) {
+            return true;
+        } else if (isNewer && !isLessAccurate) {
+            return true;
+        } else if (isNewer && !isSignificantlyLessAccurate && isFromSameProvider) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Checks whether two providers are the same */
+    private boolean isSameProvider(String provider1, String provider2) {
+        if (provider1 == null) {
+            return provider2 == null;
+        }
+        return provider1.equals(provider2);
+    }
+	
 	private void makeUseOfLocation(Location location){
-		currentLocation = location;
 		if(location== null)return; 
+		currentLocation = location;
+		Location lastKnownLocation = locationClient.getLastLocation();
+		if(isBetterLocation(lastKnownLocation, currentLocation)){
+			currentLocation = lastKnownLocation;
+			location = lastKnownLocation;
+		}
 		float delta;
-		float headingToDestination = location.bearingTo(currentDestination);
+		//to be currentDes
+		float headingToDestination = location.bearingTo(finalDestination);
+		if(!checkRangeOf(headingToDestination))return;
+		if(headingToDestination<0)headingToDestination+=360;
 		float currentBearing = location.getBearing();
-		float distanceTo = location.distanceTo(currentDestination);
+		//supposed to be current dest distance
+		float distanceTo = location.distanceTo(finalDestination);
 		if(distanceTo <= location.getAccuracy()){
-			String action = ARRIVED_CURRENT;
-			if(currentDestination.equals(finalDestination)){
-				action = ARRIVED_FINAL;
-			}else{
-				updateCurrentDestination();
-				String currentArrived = ARRIVED_CURRENT_COMMAND;
-				writeUpdate(action, currentArrived);
-				return;
-			}
+//			String action = ARRIVED_CURRENT;
+//			if(currentDestination.equals(finalDestination)){
+//				action = ARRIVED_FINAL;
+//			}else{
+//				updateCurrentDestination();
+//				String currentArrived = ARRIVED_CURRENT_COMMAND;
+//				writeUpdate(action, currentArrived);
+//				return;
+//			}
+			String action = ARRIVED_FINAL;
 			String arrived = ARRIVED_FINAL_COMMAND;
 			writeUpdate(action, arrived);
 			return;
 		}
 		String command="";
-		if(currentBearing == 0.0){
+		if(!location.hasBearing()||currentBearing==0){
 			command +="#2#";
 			command += String.valueOf(headingToDestination);
+
 			command +="#";
 			writeUpdate(LOCATION_UPDATE, command);
 			return;
 		}
 		if(currentBearing>0.0){
 			delta = headingToDestination - currentBearing;
-			if(delta<0)delta+=360;
+			 if(delta<0)delta+=360;
 			command +="#1#";
 			command += String.valueOf(delta);
 			command +="#";
@@ -796,7 +882,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 					updateConnectionState(CONNECTED);
 				
 			} else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
-				
+				stopNavigation();
 				updateConnectionState(DISCONNECTED);
 
 			} else if (BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {

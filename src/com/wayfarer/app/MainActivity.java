@@ -142,9 +142,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 //-------------------------STATE STRINGS----------------------------------------------//
 	private static final String HERE = "here";
 	public static final String PAUSE = "PAUSE";
-	public static final String LOCATION_UPDATE = "LOCATION UPDATE";
-	public static final String ARRIVED_CURRENT = "ARRIVED AT CURRENT WAYPOINT";
-	public static final String ARRIVED_FINAL = "ARRIVED AT DESTINATION";
+	
 	private static final String FOUND = "found";
 	private static final String CONNECTED = "connected";
 	private static final String DISCONNECTED = "dis";
@@ -161,7 +159,14 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private GoogleMap map                   = null;
 	private LocationClient locationClient   = null;
 
-
+//-------------------------------------COMMAND STRINGS AND ACTIONS FOR BT SIGNAL -----------------------------------//
+	public static final String LOCATION_UPDATE = "LOCATION UPDATE";
+	public static final String ARRIVED_CURRENT = "ARRIVED AT CURRENT WAYPOINT";
+	public static final String ARRIVED_FINAL = "ARRIVED AT DESTINATION";
+	public static final String BEGIN_NAV = "BEGINNING NAVIGATION";
+	public static final String BEGIN_NAV_COMMAND = "#5#1#";
+	public static final String ARRIVED_FINAL_COMMAND = "#3#1#";
+	public static final String ARRIVED_CURRENT_COMMAND = "#4#1#";
 	
 //--------------------------------GUI----------------------------------------------------------------------//
 
@@ -461,6 +466,10 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		super.onDestroy();
 		unbindService(mServiceConnection);
 		mBluetoothLeService = null;
+		locationClient.removeLocationUpdates(this);
+		locationClient.disconnect();
+
+
 	}
 
 	/*
@@ -585,7 +594,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		waypoints = currentRoute.getPoints();
 		currentIndex = 1;
 		Location location = locationClient.getLastLocation();
+		writeUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
 		currentDestination = makeLocation(waypoints.get(currentIndex));
+
 		//currentIndex = findNearestDestinationInWaypointArray(location);
 		onLocationChanged(location);
 
@@ -599,7 +610,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	
 	private void stopNavigation(){
 		updateConnectionState(STOP_NAV_MODE);
-		//currentRoute = null;
 	}
 
 	private boolean navigationOkay() {
@@ -667,11 +677,11 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 				action = ARRIVED_FINAL;
 			}else{
 				updateCurrentDestination();
-				String currentArrived = "#4#11#";
+				String currentArrived = ARRIVED_CURRENT_COMMAND;
 				writeUpdate(action, currentArrived);
 				return;
 			}
-			String arrived = "#3#111#";
+			String arrived = ARRIVED_FINAL_COMMAND;
 			writeUpdate(action, arrived);
 			return;
 		}

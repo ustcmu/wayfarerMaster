@@ -430,6 +430,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 		Log.d(LOG_TAG, "MainActivity initialized.");
 		AC = (ApplicationController)getApplicationContext();
+		
 		mLocationRequest = LocationRequest.create();
 		mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 		mLocationRequest.setInterval(locationUpdateInterval);
@@ -467,15 +468,22 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	protected void onPause() {
 		super.onPause();
 		unregisterReceiver(mGattUpdateReceiver);
+		
+		if(listenToNavigationUpdates)pauseNavigation();
+		
+		
 	}
 
 	@Override
 	protected void onDestroy(){
 		super.onDestroy();
+		if(listenToNavigationUpdates)stopNavigation();
+
 		unbindService(mServiceConnection);
 		mBluetoothLeService = null;
 		locationClient.removeLocationUpdates(this);
 		locationClient.disconnect();
+
 
 
 	}
@@ -597,20 +605,15 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			Toast.makeText(this, "Failed to start navigation", Toast.LENGTH_SHORT).show();
 			return;
 		}
+		AC.startProgress();
 		startTime = System.currentTimeMillis();
 		finalDestination = makeLocation(currentRoute.getEndLocation());
 		waypoints = currentRoute.getPoints();
-		currentIndex = 1;
-		//Location location = locationClient.getLastLocation();
-		writeUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
-		//currentDestination = makeLocation(waypoints.get(currentIndex));
+		btUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
+		AC.addProgressPoint(makeLocation(currentRoute.getStartLocation()));
+		currentIndex = AC.getProgressIndex();
+		currentDestination = makeLocation(waypoints.get(currentIndex));
 		updateConnectionState(NAV_MODE);
-
-
-		//currentIndex = findNearestDestinationInWaypointArray(location);
-		//onLocationChanged(location);
-
-
 	}
 	
 
@@ -628,28 +631,22 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		
 	}
 
-
-	private void writeUpdate(String action, String command){
-		Log.d(LOG_TAG, "Attempting to write.");
-		Log.d(LOG_TAG, "Device found: " +deviceFound);
-		Log.d(LOG_TAG, "Can startsending: " +canStartSendingData);
-
-		
-
+	private void btUpdate(String action, String command){
+		if(action.equals(ARRIVED_FINAL)){
+			stopNavigation();
+		}
 		if(canStartSendingData && characteristicTx!=null&&deviceFound){
 			Log.d(LOG_TAG, "Writing:" + command);
 
 			final byte[] bytes = command.getBytes();
 			characteristicTx.setValue(bytes);
 			mBluetoothLeService.writeCharacteristic(characteristicTx);
-			Toast.makeText(this,action +" "+ command , Toast.LENGTH_SHORT).show();
-			if(action.equals(ARRIVED_FINAL)){
-				stopNavigation();
-			}
+			Toast.makeText(this,action +" "+ command , Toast.LENGTH_SHORT).show();	
 		}
 	}
-	@Override
-	public void onLocationChanged(Location location) {
+	
+	private void writeUpdate(String action, String command){
+		
 		if(listenToNavigationUpdates){
 	        currentTime = System.currentTimeMillis();
 	        if((currentTime-startTime) >=  listenTimeInterval){
@@ -657,34 +654,19 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	        	enoughTimeHasPassed = true;
 
 	        }
-	        if(enoughTimeHasPassed){
-	        	makeUseOfLocation(location);
+	        if(enoughTimeHasPassed || command.equals(ARRIVED_FINAL)){
 				enoughTimeHasPassed=false;
+				btUpdate(action, command);
 			}
 		}
+		
 	}
-
-
-	//update to check for -1 and if I pause in the middle of a route
-	private int findNearestDestinationInWaypointArray(Location location) {
-		if(waypoints==null)return -1;
-		float closestDistance = location.distanceTo(finalDestination);
-		int index = currentIndex;
-		int size = waypoints.size();
-		if(currentIndex >= waypoints.size()-1)return -1;
-		for(int i = currentIndex + 1; i<size; i++){
-			Location dest = makeLocation(waypoints.get(i));
-			float currentDist = location.distanceTo(dest);
-			if(currentDist<closestDistance){
-				index = i;
-				closestDistance = currentDist;
-			}
-		}
-		if(index == 0)index = 1;
-		return index;
-
+		
+	@Override
+	public void onLocationChanged(Location location) {
+    	if(waypoints!=null)makeUseOfLocation(location);
 	}
-
+	
 	private boolean checkRangeOf(float heading){
 		return heading>=(-180)&& heading<=180;
 		
@@ -748,24 +730,21 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			location = lastKnownLocation;
 		}
 		float delta;
-		//to be currentDes
-		float headingToDestination = location.bearingTo(finalDestination);
+		float headingToDestination = location.bearingTo(currentDestination);
 		if(!checkRangeOf(headingToDestination))return;
 		if(headingToDestination<0)headingToDestination+=360;
 		float currentBearing = location.getBearing();
-		//supposed to be current dest distance
-		float distanceTo = location.distanceTo(finalDestination);
+		float distanceTo = location.distanceTo(currentDestination);
 		if(distanceTo <= location.getAccuracy()){
-//			String action = ARRIVED_CURRENT;
-//			if(currentDestination.equals(finalDestination)){
-//				action = ARRIVED_FINAL;
-//			}else{
-//				updateCurrentDestination();
-//				String currentArrived = ARRIVED_CURRENT_COMMAND;
-//				writeUpdate(action, currentArrived);
-//				return;
-//			}
-			String action = ARRIVED_FINAL;
+			String action = ARRIVED_CURRENT;
+			if(currentDestination.equals(finalDestination)){
+				action = ARRIVED_FINAL;
+			}else{
+				updateCurrentDestination();
+				String currentArrived = ARRIVED_CURRENT_COMMAND;
+				writeUpdate(action, currentArrived);
+				return;
+			}
 			String arrived = ARRIVED_FINAL_COMMAND;
 			writeUpdate(action, arrived);
 			return;
@@ -802,11 +781,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 
 	private void updateCurrentDestination() {
-		if(currentIndex>0 && currentIndex <(waypoints.size()-1)){
-			currentIndex++;
-			currentDestination = makeLocation(waypoints.get(currentIndex));
-		}else if(currentIndex>=waypoints.size()-1)currentDestination = finalDestination;
-
+		AC.addProgressPoint(currentDestination);
+		currentIndex = AC.getProgressIndex();
+		currentDestination = makeLocation(waypoints.get(currentIndex));
 	}
 
 	public Location makeLocation(LatLng ll){

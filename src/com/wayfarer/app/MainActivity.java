@@ -626,12 +626,16 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		AC.startProgress();
 		startTime = System.currentTimeMillis();
 		finalDestination = makeLocation(currentRoute.getEndLocation());
+		Location location = ocationClient.getLastLocation();
 		waypoints = currentRoute.getPoints();
 		btUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
 		AC.addProgressPoint(makeLocation(currentRoute.getStartLocation()));
 		currentIndex = AC.getProgressIndex();
 		currentDestination = makeLocation(waypoints.get(currentIndex));
 		updateConnectionState(NAV_MODE);
+		enoughTimeHasPassed = true;
+		onLocationChanged(location);
+
 	}
 	
 
@@ -652,6 +656,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private void btUpdate(String action, String command){
 		if(action.equals(ARRIVED_FINAL)){
 			stopNavigation();
+			return;
 		}
 		if(canStartSendingData && characteristicTx!=null&&deviceFound){
 			Log.d(LOG_TAG, "Writing:" + command);
@@ -779,9 +784,10 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			if(currentDestination.equals(finalDestination)){
 				action = ARRIVED_FINAL;
 			}else{
-				updateCurrentDestination();
 				String currentArrived = ARRIVED_CURRENT_COMMAND;
 				writeUpdate(action, currentArrived);
+				updateCurrentDestination(lastKnownLocation);
+
 				return;
 			}
 			String arrived = ARRIVED_FINAL_COMMAND;
@@ -829,10 +835,12 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	}
 
 
-	private void updateCurrentDestination() {
+	private void updateCurrentDestination(Location location) {
 		AC.addProgressPoint(currentDestination);
 		currentIndex = AC.getProgressIndex();
 		currentDestination = makeLocation(waypoints.get(currentIndex));
+		enoughTimeHasPassed = true;
+		onLocationChanged(location);
 	}
 
 	public Location makeLocation(LatLng ll){

@@ -95,7 +95,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	public static final String LOG_TAG = "Wayfarer: MainActivity";
 
 //---------------------------TIMER------------------------------------//	
-    private static long listenTimeInterval = 10000;
+   	private static long updateFrequencyDefault = 20000;
+    private static long listenTimeInterval = 5000;
+    private static long updateScalar = 15000;
     private static long currentTime;
     private static long startTime;
     private static boolean enoughTimeHasPassed=false;
@@ -105,12 +107,15 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	private ApplicationController AC = null;
 
 //-----------------------LOCATION GLOBALS-----------------------------------------//
+	private int deltaOn = 0;
+	private int distanceOn = 1;
+	private int thresholdForLost =30;
 	private int currentIndex;
 	private Location currentLocation = null;
 	private Location currentDestination;
 	private Location finalDestination;
 	private LocationRequest mLocationRequest;
-	private static final long locationUpdateInterval = 12000;
+	private static final long locationUpdateInterval = 8000;
 	public static String currentAddr = null;
 	String startAddr = null;
 	String destAddr  = null;
@@ -720,6 +725,23 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
         }
         return provider1.equals(provider2);
     }
+    private double chooseDistanceTier(float distanceTo){
+    	double distanceScalar = 0;
+    	if(distanceTo>=250)distanceScalar = 1;
+    	else if(distanceTo<250&&distanceTo>=200)distanceScalar =0.8;
+    	else if(distanceTo<200&&distanceTo>=150)distanceScalar =0.7;
+    	else if(distanceTo<150&&distanceTo>=100)distanceScalar =0.6;
+    	else if(distanceTo<100&&distanceTo>=50)distanceScalar =0.5;
+    	else if(distanceTo<50)distanceScalar =0.1;
+    	return distanceScalar;
+    }
+
+    private void updateFrequencyOfLocationUpdate(double distanceScalar,double deltaScalar){
+    	listenTimeInterval = (long) (updateFrequencyDefault - (distanceOn*(1-distanceScalar)*updateScalar) -
+    	 (deltaOn*deltaScalar*updateScalar));
+	}
+
+
 	
 	private void makeUseOfLocation(Location location){
 		if(location== null)return; 
@@ -735,6 +757,10 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		if(headingToDestination<0)headingToDestination+=360;
 		float currentBearing = location.getBearing();
 		float distanceTo = location.distanceTo(currentDestination);
+		if(distanceOn==1){
+			double distanceScalar = chooseDistanceTier(distanceTo);
+			updateFrequencyOfLocationUpdate(distanceScalar, 0);
+		}
 		if(distanceTo <= location.getAccuracy()){
 			String action = ARRIVED_CURRENT;
 			if(currentDestination.equals(finalDestination)){
@@ -760,7 +786,17 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		}
 		if(currentBearing>0.0){
 			delta = headingToDestination - currentBearing;
-			 if(delta<0)delta+=360;
+			if(delta<0)delta+=360;
+			if(delta>thresholdForLost){
+				distanceOn = 0;
+				deltaOn = 1;
+				double deltaScalar = 180-delta;
+				if(deltaScalar<0)deltaScalar+=180;
+				updateFrequencyOfLocationUpdate(0,(deltaScalar/180));
+			}else {
+				deltaOn = 0;
+				distanceOn = 1;
+			}
 			command +="#1#";
 			command += String.valueOf(delta);
 			command +="#";
@@ -843,6 +879,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		@Override
 		public void onServiceDisconnected(ComponentName componentName) {
 			mBluetoothLeService = null;
+			stopNavigation();
+			updateConnectionState(SERVICE_DISCONNECTED);
+
 		}
 	};
 
@@ -867,7 +906,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 				getGattService(mBluetoothLeService.getBLEService());
 				
 			} else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
-				updateConnectionState(DISCONNECTED);
+				//updateConnectionState(DISCONNECTED);
 				
 				return;
 			}

@@ -121,6 +121,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	String destAddr  = null;
 	Route currentRoute = null;
 	private static final int TWO_MINUTES = 1000 * 60 * 2;
+	private static final double GPS_RADIUS = 35;
 
 
 	
@@ -291,8 +292,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 	// Do a null check to confirm that we have initiated the map.
 	// During app's lifetime, This prevents map being destroyed after suspended.
-	private void setUpMapIfNeeded()
-	{
+	private void setUpMapIfNeeded(){
 		// Get the map if not.
 		if(map == null)
 		{
@@ -308,6 +308,8 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			}
 			else
 				Log.d(LOG_TAG, "Successfully instantiate google map.");
+			
+		
 		}
 	}
 
@@ -410,7 +412,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		Log.d(LOG_TAG, "Device found = " + deviceFound);
 		Log.d(LOG_TAG,"Can Start Sending data = "+ canStartSendingData);
 		Log.d(LOG_TAG, "TX is null = " + (characteristicTx==null));
-		Toast.makeText(this, "Device trying to connect....", Toast.LENGTH_SHORT).show();
+		Toast.makeText(this, "Trying to find device....", Toast.LENGTH_SHORT).show();
+		updateConnectionState(SCANNING);
+		scan();
 		
 	}
 	private void tellUserToSearch(){
@@ -451,14 +455,13 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		if (mBluetoothLeService != null) {
 			final boolean result = mBluetoothLeService.connect(mDeviceAddress);
 			Log.d(TAG, "Connect request result=" + result);
-			if(result)updateConnectionState(CONNECTED);
+			//if(result)updateConnectionState(CONNECTED);
 		}
 		setUpMapIfNeeded();
-		Route possibleRT = AC.getCurrentRoute;
-		if(possibleRT!=null){
-			currentRoute = possibleRT;
-			drawRoute();
-		}
+		
+		
+		
+		
 	}
 
 	// Called when the Activity becomes visible.
@@ -470,8 +473,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	{
 		super.onStart();
 		locationClient.connect();
+		Route route = AC.getCurrentRoute();
+		if(route!=null)currentRoute =route;
 		
-
 	}
 
 
@@ -506,6 +510,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	 */
 	@Override
 	protected void onStop() {
+		AC.setRoute(currentRoute);
 		// Disconnecting the client invalidates it.
 		locationClient.removeLocationUpdates(this);
 		locationClient.disconnect();
@@ -769,7 +774,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			double distanceScalar = chooseDistanceTier(distanceTo);
 			updateFrequencyOfLocationUpdate(distanceScalar, 0);
 		}
-		if(distanceTo <= location.getAccuracy()){
+		if(distanceTo <= location.getAccuracy()||distanceTo<=GPS_RADIUS){
 			String action = ARRIVED_CURRENT;
 			if(currentDestination.equals(finalDestination)){
 				action = ARRIVED_FINAL;
@@ -1085,16 +1090,9 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			return false;
 		}
 	}
-	/**
-	 * Make request to Google Direction API to get route from start address to
-	 * destination address in another thread.
-	 *
-	 * start_addr, dest_addr and route are all class memebers, so no parameters
-	 * are passed.
-	 */
 
 	private void drawRoute(){
-		// Draw route on the map.
+			// Draw route on the map.
 			PolylineOptions routePolylineOptions = new PolylineOptions();
 			routePolylineOptions.addAll(currentRoute.getPoints());
 			map.addPolyline(routePolylineOptions);
@@ -1115,9 +1113,15 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			map.moveCamera(CameraUpdateFactory.newLatLngBounds(currentRoute.getBounds(), 0));
 			updateConnectionState(NAV_MODE_ENABLED);
 			//TRIGGER ABILITY TO TOGGLE START NAV BUTTON IF BLUETOOTH GOOD
-			AC.setRoute(currentRoute);
 	}
 
+	/**
+	 * Make request to Google Direction API to get route from start address to
+	 * destination address in another thread.
+	 *
+	 * start_addr, dest_addr and route are all class memebers, so no parameters
+	 * are passed.
+	 */
 	private void getRouteByRequestingGoogle()
 	{
 		new GetRoutes().execute();
@@ -1141,8 +1145,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		@Override
 		protected void onPostExecute(Void result)
 		{
-			drawRoute();	
-
+			drawRoute();
 		}
 
 		private Route directions(String startAddr, String destAddr)

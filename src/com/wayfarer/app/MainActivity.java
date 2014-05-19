@@ -783,16 +783,16 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			String action = ARRIVED_CURRENT;
 			if(currentDestination.equals(finalDestination)){
 				action = ARRIVED_FINAL;
+				String arrived = ARRIVED_FINAL_COMMAND;
+				writeUpdate(action, arrived);
+				return;
 			}else{
 				String currentArrived = ARRIVED_CURRENT_COMMAND;
 				writeUpdate(action, currentArrived);
 				updateCurrentDestination(lastKnownLocation);
-
 				return;
 			}
-			String arrived = ARRIVED_FINAL_COMMAND;
-			writeUpdate(action, arrived);
-			return;
+			
 		}
 		String command="";
 		if(!location.hasBearing()||currentBearing==0){

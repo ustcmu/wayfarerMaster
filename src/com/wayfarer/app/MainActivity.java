@@ -445,6 +445,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	@Override
 	protected void onResume()
 	{
+		
 		super.onResume();
 		registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
 		if (mBluetoothLeService != null) {
@@ -453,6 +454,11 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 			if(result)updateConnectionState(CONNECTED);
 		}
 		setUpMapIfNeeded();
+		Route possibleRT = AC.getCurrentRoute;
+		if(possibleRT!=null){
+			currentRoute = possibleRT;
+			drawRoute();
+		}
 	}
 
 	// Called when the Activity becomes visible.
@@ -486,8 +492,10 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 
 		unbindService(mServiceConnection);
 		mBluetoothLeService = null;
-		locationClient.removeLocationUpdates(this);
-		locationClient.disconnect();
+		if(locationClient.isConnected()){
+			locationClient.removeLocationUpdates(this);
+			locationClient.disconnect();
+		}
 
 
 
@@ -1084,6 +1092,32 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 	 * start_addr, dest_addr and route are all class memebers, so no parameters
 	 * are passed.
 	 */
+
+	private void drawRoute(){
+		// Draw route on the map.
+			PolylineOptions routePolylineOptions = new PolylineOptions();
+			routePolylineOptions.addAll(currentRoute.getPoints());
+			map.addPolyline(routePolylineOptions);
+
+			// Draw marker on origin and destination.
+			map.addMarker(new MarkerOptions()
+			.position(currentRoute.getStartLocation())
+			.title(currentRoute.getStartAddr())
+					);
+			map.addMarker(new MarkerOptions()
+			.position(currentRoute.getEndLocation())
+			.title(currentRoute.getDestAddr())
+					);
+
+			// Set camera to the route.
+			// TODO: adjust the padding when refining.
+			// TODO: add animation when moving camera.
+			map.moveCamera(CameraUpdateFactory.newLatLngBounds(currentRoute.getBounds(), 0));
+			updateConnectionState(NAV_MODE_ENABLED);
+			//TRIGGER ABILITY TO TOGGLE START NAV BUTTON IF BLUETOOTH GOOD
+			AC.setRoute(currentRoute);
+	}
+
 	private void getRouteByRequestingGoogle()
 	{
 		new GetRoutes().execute();
@@ -1107,28 +1141,7 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		@Override
 		protected void onPostExecute(Void result)
 		{
-			// Draw route on the map.
-			PolylineOptions routePolylineOptions = new PolylineOptions();
-			routePolylineOptions.addAll(currentRoute.getPoints());
-			map.addPolyline(routePolylineOptions);
-
-			// Draw marker on origin and destination.
-			map.addMarker(new MarkerOptions()
-			.position(currentRoute.getStartLocation())
-			.title(currentRoute.getStartAddr())
-					);
-			map.addMarker(new MarkerOptions()
-			.position(currentRoute.getEndLocation())
-			.title(currentRoute.getDestAddr())
-					);
-
-			// Set camera to the route.
-			// TODO: adjust the padding when refining.
-			// TODO: add animation when moving camera.
-			map.moveCamera(CameraUpdateFactory.newLatLngBounds(currentRoute.getBounds(), 0));
-			updateConnectionState(NAV_MODE_ENABLED);
-			//TRIGGER ABILITY TO TOGGLE START NAV BUTTON IF BLUETOOTH GOOD
-			AC.setRoute(currentRoute);
+			drawRoute();	
 
 		}
 

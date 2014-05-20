@@ -626,18 +626,55 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		AC.startProgress();
 		startTime = System.currentTimeMillis();
 		finalDestination = makeLocation(currentRoute.getEndLocation());
-		Location location = ocationClient.getLastLocation();
+		Location location = locationClient.getLastLocation();
 		waypoints = currentRoute.getPoints();
 		btUpdate(BEGIN_NAV, BEGIN_NAV_COMMAND);
 		AC.addProgressPoint(makeLocation(currentRoute.getStartLocation()));
 		currentIndex = AC.getProgressIndex();
-		currentDestination = makeLocation(waypoints.get(currentIndex));
+		currentDestination = findBestWaypointFromCurrentLocation(location);
 		updateConnectionState(NAV_MODE);
-		enoughTimeHasPassed = true;
-		onLocationChanged(location);
+		listenTimeInterval = 3000;
 
 	}
 	
+	/*A waypoint is "better" if it is in the direction of the final direction, 
+	 * it is closer to the current location, and it is further in the array 
+	 */
+	private Location findBestWaypointFromCurrentLocation(Location location){
+		if(waypoints==null)return null;
+		float headingToFinal = location.bearingTo(finalDestination);
+		Location best = makeLocation(waypoints.get(currentIndex));
+		float bestHeading = location.bearingTo(best);
+		if(!checkRangeOf(bestHeading)||!checkRangeOf(headingToFinal))return best;
+		if(bestHeading<0)bestHeading+=360;
+		if(headingToFinal<0)headingToFinal+=360;
+		float bestDistance = location.distanceTo(best);
+		float bestDelta = headingToFinal-bestHeading;
+		if(bestDelta<0)bestDelta+=360;
+		int size = waypoints.size();
+		for(int i=currentIndex; i<size;i++){
+			Location possible = makeLocation(waypoints.get(i));
+			float possibleDistance = location.distanceTo(possible);
+			float possibleHeading = location.bearingTo(possible);
+			if(!checkRangeOf(possibleHeading))return best;
+			if(possibleHeading<0)possibleHeading+=360;
+			float possibleDelta = headingToFinal-possibleHeading;
+			if(possibleDelta<0)possibleDelta+=360;
+			if(betterDelta(possibleDelta, bestDelta)&&possibleDistance<bestDistance){
+				best = possible;
+				bestDistance = possibleDistance;
+				bestHeading = possibleHeading;
+				currentIndex = i;
+			}
+			
+		}
+		return best;
+	}
+
+	private boolean betterDelta(float possible, float best){
+		if(best>180)best = 360-best;
+		return (possible<best || (360-possible)<best);
+	}
 
 	private void pauseNavigation(){
 		updateConnectionState(PAUSE_NAV_MODE);
@@ -839,8 +876,8 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		AC.addProgressPoint(currentDestination);
 		currentIndex = AC.getProgressIndex();
 		currentDestination = makeLocation(waypoints.get(currentIndex));
-		enoughTimeHasPassed = true;
-		onLocationChanged(location);
+		listenTimeInterval = 500;
+		
 	}
 
 	public Location makeLocation(LatLng ll){
@@ -850,7 +887,6 @@ GooglePlayServicesClient.OnConnectionFailedListener, LocationListener{
 		return location;
 
 	}
-
 
 	
 	
